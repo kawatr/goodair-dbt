@@ -1,0 +1,54 @@
+name: GoodAir dbt Run
+
+on:
+  schedule:
+    - cron: '30 * * * *'  # Toutes les heures à H:30
+  workflow_dispatch:       # Permet de lancer manuellement
+
+jobs:
+  dbt-run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dbt
+        run: pip install dbt-postgres
+
+      - name: Create profiles.yml
+        run: |
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml << EOF
+          goodair_dbt:
+            target: dev
+            outputs:
+              dev:
+                type: postgres
+                host: ${{ secrets.POSTGRES_HOST }}
+                port: 5432
+                user: ${{ secrets.POSTGRES_USER }}
+                password: ${{ secrets.POSTGRES_PASSWORD }}
+                dbname: goodairdb
+                schema: gold
+                threads: 1
+                sslmode: require
+          EOF
+
+      - name: Run dbt
+        run: |
+          cd goodair_dbt
+          dbt run
+        working-directory: ${{ github.workspace }}
+
+      - name: dbt test
+        run: |
+          cd goodair_dbt
+          dbt test
+        working-directory: ${{ github.workspace }}
+        continue-on-error: true
