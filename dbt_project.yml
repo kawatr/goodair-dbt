@@ -1,0 +1,20 @@
+name: 'goodair_dbt'
+version: '1.0.0'
+profile: 'goodair_dbt'
+
+model-paths: ["goodair_dbt/models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  goodair_dbt:
+    gold:
+      +materialized: table
+      +schema: gold

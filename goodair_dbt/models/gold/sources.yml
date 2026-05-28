@@ -1,0 +1,14 @@
+version: 2
+
+sources:
+  - name: silver
+    schema: public
+    tables:
+      - name: mesure_air_aqicn
+        description: "Mesures qualité de l'air AQICN"
+      - name: mesure_meteo
+        description: "Mesures météo OWM"
+      - name: mesure_pollution_owm
+        description: "Mesures pollution OWM"
+      - name: ville
+        description: "Référentiel des villes"
