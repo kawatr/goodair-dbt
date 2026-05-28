@@ -1,0 +1,30 @@
+name: GoodAir ML Pipeline
+
+on:
+  schedule:
+    - cron: '35 * * * *'  # Toutes les heures à H:35 (après dbt à H:30)
+  workflow_dispatch:       # Permet de lancer manuellement
+
+jobs:
+  ml-run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install prophet psycopg2-binary pandas scikit-learn sqlalchemy
+
+      - name: Run ML Pipeline
+        env:
+          POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        run: python goodair_ml.py
