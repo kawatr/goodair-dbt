@@ -184,9 +184,9 @@ for ville in villes_top:
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """, (
                     ville, mesure, row['ds'],
-                    round(float(row['yhat']), 2),
-                    round(float(row['yhat_lower']), 2),
-                    round(float(row['yhat_upper']), 2),
+                    max(0, round(float(row['yhat']), 2)),
+                    max(0, round(float(row['yhat_lower']), 2)),
+                    max(0, round(float(row['yhat_upper']), 2)),
                     type_val
                 ))
 
