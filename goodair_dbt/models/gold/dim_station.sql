@@ -1,7 +1,7 @@
 -- dim_station : référentiel des stations
 {{ config(materialized='table') }}
 
-SELECT DISTINCT
+SELECT DISTINCT ON (v.id)
     v.id                AS station_id,
     v.slug_aqicn        AS station_slug,
     v.nom               AS station_nom,
@@ -14,3 +14,4 @@ FROM {{ source('silver', 'ville') }} v
 LEFT JOIN {{ source('silver', 'mesure_air_aqicn') }} a
     ON v.id = a.ville_id
 WHERE v.actif = TRUE
+ORDER BY v.id, a.collecte_le DESC
