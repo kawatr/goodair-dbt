@@ -106,7 +106,7 @@ if len(df_ml) > 10:
             cree_le     TIMESTAMP DEFAULT NOW()
         )
     """)
-    anomalies = df[df['anomalie_flag'] == True]
+    anomalies = df[df_ml.index]  # toutes les lignes
     for _, row in anomalies.iterrows():
         cur.execute("""
             INSERT INTO ml_anomalies 
