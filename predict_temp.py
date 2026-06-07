@@ -60,7 +60,7 @@ print(f"Train : {len(X_train):,} lignes  |  Test : {len(X_test):,} lignes")
 
 
 # Entrainement
-print("\n→ Entraînement RandomForest...")
+print("\n Entraînement RandomForest...")
 model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
 model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
@@ -138,3 +138,50 @@ df_export = pd.DataFrame({
 df_export.to_csv("predictions_temperature.csv", sep=";", index=False)
 print(f"\nPrédictions exportées : predictions_temperature.csv")
 print(f"Graphique sauvegardé  : goodair_rf_temperature.png")
+
+# ============================================================
+# EXPORT POSTGRESQL AZURE
+# ============================================================
+from sqlalchemy import create_engine, text
+
+
+PG_HOST = "goodair-pg-26074.postgres.database.azure.com"
+PG_USER = "goodairadmin"
+PG_PASSWORD = "GoodAir_Azure_2026!"
+PG_DB   = "goodairdb"
+PG_PORT = 5432
+
+print("\nConnexion PostgreSQL Azure...")
+
+engine = create_engine(
+    f"postgresql+psycopg2://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/{PG_DB}"
+    "?sslmode=require"
+)
+
+# Créer la table si elle n'existe pas
+with engine.connect() as conn:
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS ml_predictions_temperature (
+            id              SERIAL PRIMARY KEY,
+            mesure_le       TIMESTAMP NOT NULL,
+            ville_id        INTEGER NOT NULL,
+            temp_reelle     FLOAT,
+            temp_predite    FLOAT,
+            erreur          FLOAT,
+            inserted_at     TIMESTAMP DEFAULT NOW()
+        );
+    """))
+    conn.commit()
+    print("Table ml_predictions_temperature prête")
+
+# Insérer les prédictions
+df_export.to_sql(
+    name="ml_predictions_temperature",
+    con=engine,
+    if_exists="append",   # append = ajoute sans écraser
+    index=False,
+    method="multi",       # insertion par batch (plus rapide)
+    chunksize=1000
+)
+
+print(f"{len(df_export):,} prédictions insérées sur PostgreSQL Azure")
