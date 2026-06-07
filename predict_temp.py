@@ -1,7 +1,3 @@
-# ============================================================
-# GoodAir — Prévision Température T+1h — RandomForest
-# ============================================================
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -10,16 +6,13 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import warnings
 warnings.filterwarnings("ignore")
 
-# ============================================================
-# 1. CHARGEMENT
-# ============================================================
+
 df = pd.read_csv("goodair_nettoye.csv", sep=";", parse_dates=["mesure_le"])
 df = df.drop(columns=["station_timezone"], errors="ignore")
 df = df.sort_values(["ville_id", "mesure_le"]).reset_index(drop=True)
 
-# ============================================================
-# 2. FEATURE ENGINEERING
-# ============================================================
+
+# Features 
 df["heure"]        = df["mesure_le"].dt.hour
 df["jour_semaine"] = df["mesure_le"].dt.dayofweek
 df["mois"]         = df["mesure_le"].dt.month
@@ -52,9 +45,7 @@ CIBLE = "temperature"
 
 df = df.dropna(subset=FEATURES + [CIBLE]).reset_index(drop=True)
 
-# ============================================================
-# 3. SPLIT TEMPOREL
-# ============================================================
+# SPLIT Temporelle - train + test
 split_date = df["mesure_le"].quantile(0.8)
 train_mask = df["mesure_le"] <= split_date
 test_mask  = df["mesure_le"] >  split_date
@@ -67,17 +58,14 @@ dates_test = df.loc[test_mask, "mesure_le"]
 
 print(f"Train : {len(X_train):,} lignes  |  Test : {len(X_test):,} lignes")
 
-# ============================================================
-# 4. ENTRAÎNEMENT
-# ============================================================
+
+# Entrainement
 print("\n→ Entraînement RandomForest...")
 model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
 model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 
-# ============================================================
-# 5. MÉTRIQUES
-# ============================================================
+# Métriques - choix de modèle
 def mape(y_true, y_pred):
     mask = y_true != 0
     return np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100
@@ -96,9 +84,8 @@ print(f"  RMSE = {rmse:.4f} °C")
 print(f"  MAPE = {mape_val:.4f} %")
 print("="*45)
 
-# ============================================================
-# 6. VISUALISATIONS
-# ============================================================
+
+# Visualisation
 fig, axes = plt.subplots(2, 2, figsize=(16, 10))
 fig.suptitle("GoodAir — RandomForest — Prévision Température T+1h",
              fontsize=13, fontweight="bold")
@@ -140,8 +127,7 @@ plt.tight_layout()
 plt.savefig("goodair_rf_temperature.png", bbox_inches="tight", dpi=150)
 plt.show()
 
-# 7. EXPORT PRÉDICTIONS
-
+# Eport la prédiction en csv
 df_export = pd.DataFrame({
     "mesure_le":   dates_test.values,
     "ville_id":    df.loc[test_mask, "ville_id"].values,
