@@ -141,8 +141,9 @@ dbt run
 ### Étape 8 — Lancer le pipeline ML
 
 ```bash
-pip install prophet psycopg2-binary pandas scikit-learn sqlalchemy
-python goodair_ml.py
+pip install psycopg2-binary pandas scikit-learn sqlalchemy xgboost catboost
+python comparaison_models.py
+python predict_temp.py
 ```
 
 ### Étape 9 — Connecter Power BI
@@ -160,9 +161,7 @@ python goodair_ml.py
    - `gold_gold.dim_station`
    - `gold_gold.dim_time`
    - `gold_gold.dim_pollutant`
-   - `public.ml_clusters`
-   - `public.ml_predictions`
-   - `public.ml_anomalies`
+   - `public.ml_predictions_temperature`
    - `public.ville`
 
 ## Pipeline automatique
@@ -174,7 +173,7 @@ Une fois déployé, le pipeline tourne automatiquement :
 | H:00 | Extraction APIs → Bronze | Azure Functions |
 | H:15 | Transformation Bronze → Silver + PostgreSQL | Azure Functions |
 | H:30 | Transformation Silver → Gold | GitHub Actions (dbt) |
-| H:35 | Machine Learning | GitHub Actions (ML) |
+| H:35 | Prévision température Random Forest | GitHub Actions (Python) |
 
 ## Tables PostgreSQL
 
@@ -183,9 +182,8 @@ Une fois déployé, le pipeline tourne automatiquement :
 - `mesure_air_aqicn` — données qualité air AQICN
 - `mesure_meteo` — données météo OWM
 - `mesure_pollution_owm` — données pollution OWM
-- `ml_anomalies` — anomalies détectées par Isolation Forest
-- `ml_predictions` — prévisions PM2.5 et AQI par Prophet
-- `ml_clusters` — clustering K-Means des villes
+- `ml_predictions_temperature` — prévisions température T+1h (Random Forest)
+- `pipeline_log` — journal d'exécution du pipeline
 
 ### Schéma gold_gold (dbt)
 - `fact_air_quality` — mesures horaires consolidées
@@ -198,9 +196,9 @@ Une fois déployé, le pipeline tourne automatiquement :
 
 | Algorithme | Objectif | Table |
 |-----------|----------|-------|
-| Isolation Forest | Détection anomalies capteurs | `ml_anomalies` |
-| Prophet (Facebook) | Prévisions PM2.5 et AQI 24h | `ml_predictions` |
-| K-Means | Clustering villes par profil pollution | `ml_clusters` |
+| Random Forest | Prévision température T+1h (R²=0.957, MAE=0.96°C) | `ml_predictions_temperature` |
+
+Trois algorithmes ont été comparés : Random Forest, XGBoost et CatBoost. Random Forest a été retenu pour ses performances supérieures avec un R²=0.957 et une MAE de 0.96°C sur les données de test.
 
 ## Sécurité
 
