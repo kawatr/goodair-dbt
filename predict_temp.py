@@ -1,18 +1,63 @@
+"""
+GoodAir — ML Random Forest — Prévision Température T+1h
+========================================================
+Source  : PostgreSQL Silver (public.mesure_air_aqicn)
+Sortie  : PostgreSQL Gold (gold_gold.ml_predictions_temperature)
+"""
+
+import os
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sqlalchemy import create_engine, text
 import warnings
 warnings.filterwarnings("ignore")
 
+# ── Config PostgreSQL ─────────────────────────────────────────────────────────
+PG_HOST = os.environ.get("POSTGRES_HOST", "goodair-pg-26074.postgres.database.azure.com")
+PG_USER = os.environ.get("POSTGRES_USER", "goodairadmin")
+PG_PASS = os.environ.get("POSTGRES_PASSWORD", "GoodAir_Azure_2026!")
+PG_DB   = "goodairdb"
+PG_PORT = 5432
 
-df = pd.read_csv("goodair_nettoye.csv", sep=";", parse_dates=["mesure_le"])
-df = df.drop(columns=["station_timezone"], errors="ignore")
+ENGINE = create_engine(
+    f"postgresql+psycopg2://{PG_USER}:{PG_PASS}@{PG_HOST}:{PG_PORT}/{PG_DB}"
+    "?sslmode=require"
+)
+
+print("=" * 60)
+print("GoodAir — Random Forest — Prévision Température T+1h")
+print("=" * 60)
+
+# ── Chargement depuis PostgreSQL Silver ───────────────────────────────────────
+print("\n Chargement des données depuis PostgreSQL Silver...")
+
+df = pd.read_sql("""
+    SELECT
+        a.ville_id,
+        a.collecte_le AS mesure_le,
+        a.temperature,
+        a.humidite,
+        a.pression,
+        a.vent
+    FROM public.mesure_air_aqicn a
+    WHERE a.temperature IS NOT NULL
+      AND a.humidite    IS NOT NULL
+      AND a.pression    IS NOT NULL
+    ORDER BY a.ville_id, a.collecte_le
+""", ENGINE)
+
+print(f"  {len(df):,} mesures chargées pour {df['ville_id'].nunique()} villes")
+
+if len(df) < 100:
+    print("  Pas assez de données — relance ce script plus tard")
+    exit()
+
+# ── Feature engineering ───────────────────────────────────────────────────────
+df["mesure_le"] = pd.to_datetime(df["mesure_le"])
 df = df.sort_values(["ville_id", "mesure_le"]).reset_index(drop=True)
 
-
-# Features 
 df["heure"]        = df["mesure_le"].dt.hour
 df["jour_semaine"] = df["mesure_le"].dt.dayofweek
 df["mois"]         = df["mesure_le"].dt.month
@@ -45,7 +90,7 @@ CIBLE = "temperature"
 
 df = df.dropna(subset=FEATURES + [CIBLE]).reset_index(drop=True)
 
-# SPLIT Temporelle - train + test
+# ── Split temporel 80/20 ──────────────────────────────────────────────────────
 split_date = df["mesure_le"].quantile(0.8)
 train_mask = df["mesure_le"] <= split_date
 test_mask  = df["mesure_le"] >  split_date
@@ -56,24 +101,24 @@ y_train = df.loc[train_mask, CIBLE]
 y_test  = df.loc[test_mask,  CIBLE]
 dates_test = df.loc[test_mask, "mesure_le"]
 
-print(f"Train : {len(X_train):,} lignes  |  Test : {len(X_test):,} lignes")
+print(f"  Train : {len(X_train):,} lignes  |  Test : {len(X_test):,} lignes")
 
-
-# Entrainement
+# ── Entraînement Random Forest ────────────────────────────────────────────────
 print("\n Entraînement RandomForest...")
 model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
 model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 
-# Métriques - choix de modèle
+# ── Métriques ─────────────────────────────────────────────────────────────────
 def mape(y_true, y_pred):
     mask = y_true != 0
     return np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100
 
-mae  = mean_absolute_error(y_test, y_pred)
-rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+mae      = mean_absolute_error(y_test, y_pred)
+rmse     = np.sqrt(mean_squared_error(y_test, y_pred))
 mape_val = mape(y_test.values, y_pred)
-r2   = r2_score(y_test, y_pred)
+r2       = r2_score(y_test, y_pred)
+erreurs  = y_test.values - y_pred
 
 print("\n" + "="*45)
 print("  RÉSULTATS — RandomForest T+1h")
@@ -84,104 +129,49 @@ print(f"  RMSE = {rmse:.4f} °C")
 print(f"  MAPE = {mape_val:.4f} %")
 print("="*45)
 
+# ── Export PostgreSQL Gold ────────────────────────────────────────────────────
+print("\n Écriture dans gold_gold.ml_predictions_temperature...")
 
-# Visualisation
-fig, axes = plt.subplots(2, 2, figsize=(16, 10))
-fig.suptitle("GoodAir — RandomForest — Prévision Température T+1h",
-             fontsize=13, fontweight="bold")
-
-# 6.1 Réel vs Prédit (300 premières heures)
-axes[0, 0].plot(dates_test.values[:300], y_test.values[:300],
-                label="Réel", color="#2196F3", linewidth=1.2)
-axes[0, 0].plot(dates_test.values[:300], y_pred[:300],
-                label="Prédit", color="#F44336", linewidth=1.2, linestyle="--")
-axes[0, 0].set_title("Réel vs Prédit (300 premières heures)")
-axes[0, 0].set_xlabel("Date")
-axes[0, 0].set_ylabel("Température (°C)")
-axes[0, 0].legend()
-axes[0, 0].tick_params(axis="x", rotation=30)
-
-# 6.2 Scatter réel vs prédit
-axes[0, 1].scatter(y_test, y_pred, alpha=0.3, color="#9C27B0", s=5)
-axes[0, 1].plot([y_test.min(), y_test.max()],
-                [y_test.min(), y_test.max()], "r--", linewidth=1.5)
-axes[0, 1].set_title(f"Scatter Réel vs Prédit  (R²={r2:.4f})")
-axes[0, 1].set_xlabel("Température réelle (°C)")
-axes[0, 1].set_ylabel("Température prédite (°C)")
-
-# 6.3 Distribution des erreurs
-erreurs = y_test.values - y_pred
-axes[1, 0].hist(erreurs, bins=60, color="#FF9800", edgecolor="white")
-axes[1, 0].axvline(0, color="red", linestyle="--")
-axes[1, 0].set_title(f"Distribution des erreurs  (MAE={mae:.2f}°C)")
-axes[1, 0].set_xlabel("Erreur (°C)")
-axes[1, 0].set_ylabel("Fréquence")
-
-# 6.4 Feature importance Top 10
-importances = pd.Series(model.feature_importances_, index=FEATURES)
-importances.nlargest(10).sort_values().plot(
-    kind="barh", ax=axes[1, 1], color="#4CAF50")
-axes[1, 1].set_title("Top 10 Features importantes")
-
-plt.tight_layout()
-plt.savefig("goodair_rf_temperature.png", bbox_inches="tight", dpi=150)
-plt.show()
-
-# Eport la prédiction en csv
 df_export = pd.DataFrame({
-    "mesure_le":   dates_test.values,
-    "ville_id":    df.loc[test_mask, "ville_id"].values,
-    "temp_reelle": y_test.values,
+    "mesure_le":    dates_test.values,
+    "ville_id":     df.loc[test_mask, "ville_id"].values,
+    "temp_reelle":  y_test.values,
     "temp_predite": y_pred,
-    "erreur":      erreurs,
+    "erreur":       erreurs,
 })
-df_export.to_csv("predictions_temperature.csv", sep=";", index=False)
-print(f"\nPrédictions exportées : predictions_temperature.csv")
-print(f"Graphique sauvegardé  : goodair_rf_temperature.png")
 
-# ============================================================
-# EXPORT POSTGRESQL AZURE
-# ============================================================
-from sqlalchemy import create_engine, text
+with ENGINE.connect() as conn:
+    # Créer le schéma gold_gold si besoin
+    conn.execute(text("CREATE SCHEMA IF NOT EXISTS gold_gold;"))
 
-
-PG_HOST = "goodair-pg-26074.postgres.database.azure.com"
-PG_USER = "goodairadmin"
-PG_PASSWORD = "GoodAir_Azure_2026!"
-PG_DB   = "goodairdb"
-PG_PORT = 5432
-
-print("\nConnexion PostgreSQL Azure...")
-
-engine = create_engine(
-    f"postgresql+psycopg2://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/{PG_DB}"
-    "?sslmode=require"
-)
-
-# Créer la table si elle n'existe pas
-with engine.connect() as conn:
+    # Créer la table
     conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS ml_predictions_temperature (
-            id              SERIAL PRIMARY KEY,
-            mesure_le       TIMESTAMP NOT NULL,
-            ville_id        INTEGER NOT NULL,
-            temp_reelle     FLOAT,
-            temp_predite    FLOAT,
-            erreur          FLOAT,
-            inserted_at     TIMESTAMP DEFAULT NOW()
+        CREATE TABLE IF NOT EXISTS gold_gold.ml_predictions_temperature (
+            id            SERIAL PRIMARY KEY,
+            mesure_le     TIMESTAMP NOT NULL,
+            ville_id      INTEGER   NOT NULL,
+            temp_reelle   FLOAT,
+            temp_predite  FLOAT,
+            erreur        FLOAT,
+            inserted_at   TIMESTAMP DEFAULT NOW()
         );
     """))
-    conn.commit()
-    print("Table ml_predictions_temperature prête")
 
-# Insérer les prédictions
+    # Vider la table avant réinsertion (évite les doublons)
+    conn.execute(text("TRUNCATE TABLE gold_gold.ml_predictions_temperature;"))
+    conn.commit()
+    print("  Table gold_gold.ml_predictions_temperature prête")
+
 df_export.to_sql(
     name="ml_predictions_temperature",
-    con=engine,
-    if_exists="append",   # append = ajoute sans écraser
+    schema="gold_gold",
+    con=ENGINE,
+    if_exists="append",
     index=False,
-    method="multi",       # insertion par batch (plus rapide)
+    method="multi",
     chunksize=1000
 )
 
-print(f"{len(df_export):,} prédictions insérées sur PostgreSQL Azure")
+print(f"  {len(df_export):,} prédictions insérées dans gold_gold")
+print("\n GoodAir ML Random Forest terminé !")
+print("="*60)

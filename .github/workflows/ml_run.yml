@@ -1,12 +1,12 @@
-name: GoodAir ML Pipeline
+name: GoodAir ML Random Forest
 
 on:
   schedule:
-    - cron: '35 * * * *'  # Toutes les heures à H:35 (après dbt à H:30)
-  workflow_dispatch:       # Permet de lancer manuellement
+    - cron: '35 * * * *'
+  workflow_dispatch:
 
 jobs:
-  ml-run:
+  ml-random-forest:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,11 +20,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install prophet psycopg2-binary pandas scikit-learn sqlalchemy
+          pip install pandas numpy scikit-learn sqlalchemy psycopg2-binary
 
-      - name: Run ML Pipeline
+      - name: Run Random Forest
         env:
           POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
           POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-        run: python goodair_ml.py
+        run: python predict_temp.py
